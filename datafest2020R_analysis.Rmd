@@ -1,0 +1,727 @@
+---
+title: "datafest2020R"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(tidytext)
+library(ggplot2)
+library(lubridate)
+library(SnowballC)
+library(wordcloud)
+library(igraph)
+library(ggraph)
+library(widyr)
+```
+
+
+```{r}
+df <- read_csv("C:\\Users\\Jieyi\\Downloads\\covid19_articles.csv")
+```
+
+drop two unreliable sources
+```{r}
+df <- df[df$domain!= 'theguardian', ]
+df <- df[df$domain!='express', ]
+```
+
+
+```{r}
+titles <- as.character(df$title)
+titles <- gsub('[[:punct:][:digit:][:blank:]]+',' ',titles)
+titles <- gsub("[^0-9A-Za-z///' ]",' ', titles)
+```
+
+
+```{r}
+updated_stop_words <- stop_words
+covid_words <- tibble('word' = c('coronavirus', 'uk', 'cnn', 'sport', 'tv', 'world', 'guardian', 'express', 'bbc', 'reuters',  'news', 'football', 'cnnpolitics', 'showbiz', 'royal', 'amid', 'radio', 'covid', 'virus', 'update', 'jim', 'cramer', 'aaas', 'santa', 'barbara', 'fintech', 'times', "iam", 'johnson', 'feb'), 'lexicon' = rep("covid", 30))
+updated_stop_words <- rbind(updated_stop_words, covid_words)
+updated_stop_words <- updated_stop_words[-which(updated_stop_words$word=='us'), ]
+```
+
+
+```{r}
+updated_stop_words_2 <- stop_words
+covid_words_2 <- tibble('word' = c('uk', 'cnn', 'sport', 'tv', 'world', 'guardian', 'express', 'bbc', 'reuters',  'news', 'football', 'cnnpolitics', 'showbiz', 'royal', 'amid', 'radio', 'update', 'jim', 'cramer', 'aaas', 'santa', 'barbara', 'fintech', 'times', 'korea', 'hong', 'white', 'central', 'wall'), 'lexicon' = rep("covid", 29))
+updated_stop_words_2 <- rbind(updated_stop_words_2, covid_words_2)
+updated_stop_words_2 <- updated_stop_words_2[-which(updated_stop_words_2$word=='us'), ]
+```
+
+
+```{r}
+df$titles <- titles
+all_titles <- df %>% unnest_tokens(word, titles) %>% count(word, sort=TRUE) %>% anti_join(updated_stop_words) 
+
+all_titles %>% top_n(20) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+
+add a new column of month for later group by usage
+```{r}
+df <- df %>% 
+  mutate(month=paste(year(date), month(date), sep="-"))
+```
+
+```{r}
+unigram <- df %>% unnest_tokens(word, titles) %>% anti_join(updated_stop_words) 
+
+bigram <- df %>% unnest_tokens(word, titles, token="ngrams", n=2) %>%
+  separate(word, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% updated_stop_words$word) %>% filter(!word2 %in% updated_stop_words$word)
+
+trigram <- df %>%
+  unnest_tokens(word, titles, token = "ngrams", n = 3) %>%
+  separate(word, c("word1", "word2", "word3"), sep = " ") %>%
+  filter(!word1 %in% updated_stop_words$word,
+         !word2 %in% updated_stop_words$word,
+         !word3 %in% updated_stop_words$word)
+```
+
+
+```{r}
+unigram %>% count(word, sort=TRUE) %>% 
+  with(wordcloud(word, n, max.words =40))
+```
+
+```{r}
+bigram  %>%  
+  count(word1,word2) %>% 
+  top_n(30) %>%
+  graph_from_data_frame() %>% 
+  ggraph(layout = "fr") +
+  geom_edge_link() +
+  geom_edge_link(aes(edge_alpha = n, edge_width = n), edge_colour = "cyan4") +
+  geom_node_point(size = 4) +
+  geom_node_text(aes(label = name), repel = TRUE, 
+                 point.padding = 0.1) + theme_void() + xlab(NULL) + ylab(NULL)
+```
+
+```{r}
+bigram <- df %>% unnest_tokens(word, titles, token="ngrams", n=2) %>%
+  separate(word, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% updated_stop_words_2$word) %>% filter(!word2 %in% updated_stop_words_2$word)
+
+bigram  %>%  
+  count(word1,word2) %>% 
+  top_n(40) %>%
+  graph_from_data_frame() %>% 
+  ggraph(layout = "fr") +
+  geom_edge_link() +
+  geom_edge_link(aes(edge_alpha = n, edge_width = n), edge_colour = "cyan4") +
+  geom_node_point(size = 4) +
+  geom_node_text(aes(label = name), repel = TRUE, 
+                 point.padding = 0.1) + theme_void()  + xlab(NULL) + ylab(NULL)
+```
+
+unigram is always trash with some specific data; dont know why
+```{r}
+updated_stop_words <- stop_words
+covid_words <- tibble('word' = c('coronavirus', 'uk', 'cnn', 'sport', 'tv', 'world', 'guardian', 'express', 'bbc', 'reuters',  'news', 'football', 'cnnpolitics', 'showbiz', 'royal', 'amid', 'radio', 'covid', 'virus', 'update', 'jim', 'cramer', 'aaas', 'santa', 'barbara', 'fintech', 'times', "iam", 'johnson', 'feb', "recap","geneva", "mwc", "shunned", "iran", "lonnie", "easter", "spain"), 'lexicon' = rep("covid", 38))
+updated_stop_words <- rbind(updated_stop_words, covid_words)
+updated_stop_words <- updated_stop_words[-which(updated_stop_words$word=='us'), ]
+unigram <- df %>% unnest_tokens(word, titles) %>% anti_join(updated_stop_words) 
+unigram %>% 
+  count(month,word)%>%
+  bind_tf_idf(word, month, n) %>%
+  arrange(desc(tf_idf)) %>% 
+  group_by(month) %>%
+  top_n(10, tf_idf) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, tf_idf)) %>%
+  ggplot(aes(word, tf_idf, fill = month)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ month, scales = "free") +
+  ylab("tf-idf") +
+  coord_flip()
+```
+
+
+```{r, fig.width=12,fig.height=6}
+updated_stop_words_3 <- stop_words
+covid_words_3 <- tibble('word' = c('uk', 'cnn', 'sport', 'tv', 'world', 'guardian', 'express', 'bbc', 'reuters',  'news', 'football', 'cnnpolitics', 'showbiz', 'royal', 'amid', 'radio', 'update', 'jim', 'cramer', 'aaas', 'santa', 'barbara', 'fintech', 'times','wall', 'johnson', 'feb', "recap", "opec", "geneva", "line", "libya"), 'lexicon' = rep("covid", 32))
+updated_stop_words_3 <- rbind(updated_stop_words_3, covid_words_3)
+updated_stop_words_3 <- updated_stop_words_3[-which(updated_stop_words_3$word=='us'), ]
+
+bigram <- df %>% unnest_tokens(word, titles, token="ngrams", n=2) %>%
+  separate(word, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% updated_stop_words_3$word) %>% filter(!word2 %in% updated_stop_words_3$word)
+
+bigram %>% unite(word, word1, word2, sep=" ") %>%
+  count(month, word) %>%
+  bind_tf_idf(word, month, n) %>%
+  arrange(desc(tf_idf)) %>% 
+  slice(2:n()) %>% 
+  group_by(month) %>%
+  arrange(desc(tf_idf)) %>%
+  slice(1:15) %>% 
+  ungroup() %>%
+  mutate(word = factor(paste(word, tf_idf, sep = "__"), 
+                       levels = rev(paste(word, tf_idf, sep = "__")))) %>%
+  ggplot(aes(word, tf_idf, fill = month)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~month, ncol = 2, scales = "free") +
+  scale_x_discrete(labels = function(x) gsub("__.+$", "", x)) +
+  coord_flip()
+
+```
+
+
+
+### sentiment analysis part 1:
+```{r}
+negation_words_index <- c(which(updated_stop_words$word %in% c('without', 'no','not', 'never')))
+sentiment_stop_words <- updated_stop_words[-c(negation_words_index), ]
+```
+
+```{r}
+bigram_2 <- df %>% unnest_tokens(word, titles, token="ngrams", n=2) %>%
+  separate(word, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% sentiment_stop_words$word) %>% filter(!word2 %in% sentiment_stop_words$word)
+```
+
+```{r}
+bigram_2 %>%
+  filter(word1 == "not") %>%
+  count(word1, word2, sort = TRUE)
+```
+
+```{r}
+AFINN <- get_sentiments("afinn")
+not_words <- bigram_2 %>%
+  filter(word1 == "not") %>%
+  inner_join(AFINN, by = c(word2 = "word")) %>%
+  count(word2, value, sort = TRUE)
+
+not_words
+```
+```{r}
+not_words %>%
+  mutate(contribution = n * value) %>%
+  arrange(desc(abs(contribution))) %>%
+  head(20) %>%
+  mutate(word2 = reorder(word2, contribution)) %>%
+  ggplot(aes(word2, n * value, fill = n * value > 0)) +
+  geom_col(show.legend = FALSE) +
+  xlab("Words preceded by \"not\"") +
+  ylab("Sentiment value * number of occurrences") +
+  coord_flip()
+```
+
+```{r}
+negation_words <- c("not", "no", "without")
+
+negated_words <- bigram_2 %>%
+  filter(word1 %in% negation_words) %>%
+  inner_join(AFINN, by = c(word2 = "word")) %>%
+  count(word1, word2, value, sort = TRUE)
+
+negated_words
+```
+
+```{r}
+negated_words %>%
+  mutate(contribution = n * value) %>%
+  arrange(desc(abs(contribution))) %>%
+  group_by(word1) %>%
+  top_n(8) %>%
+  ungroup() %>%
+  mutate(word2 = reorder(word2, contribution)) %>%
+  ggplot(aes(word2, n * value, fill = n * value > 0)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~word1, ncol = 3, scales = "free") +
+  xlab("Words preceded by \"not\"") +
+  ylab("Sentiment value * number of occurrences") +
+  coord_flip()
+```
+
+
+
+
+```{r}
+negate_words <- c('without', 'no','not', 'never')
+
+df %>% 
+  unnest_tokens(word, titles, token="ngrams", n=2) %>%
+  count()
+  filter(word1 %in% negate_words) %>%
+  count(word1, word2, wt = n, sort = TRUE) %>%
+  inner_join(get_sentiments("afinn"), by = c(word2 = "word")) %>%
+  mutate(contribution = value * n) %>%
+  group_by(word1) %>%
+  top_n(10, abs(contribution)) %>%
+  ungroup() %>%
+  mutate(word2 = reorder(paste(word2, word1, sep = "__"), contribution)) %>%
+  ggplot(aes(word2, contribution, fill = contribution > 0)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ word1, scales = "free", nrow = 3) +
+  scale_x_discrete(labels = function(x) gsub("__.+$", "", x)) +
+  xlab("Words preceded by a negation") +
+  ylab("Sentiment value * # of occurrences") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  coord_flip()
+```
+
+
+
+
+###sentiment analysis part 2
+```{r}
+library(tidytext)
+```
+
+```{r}
+afinn <-  unigram %>% 
+  inner_join(get_sentiments("afinn")) %>% 
+  group_by(index = date) %>% 
+  summarise(sentiment = (sum(value))/n())
+```
+```{r}
+afinn
+```
+
+
+```{r}
+afinn%>%
+  ggplot(aes(index, sentiment)) +
+  geom_col(show.legend = FALSE)
+```
+
+
+
+
+
+### sentiment analysis part 3: using sentimentr
+```{r}
+library(sentimentr)
+```
+
+```{r}
+titles <- as.character(df$title)
+titles <- gsub('[[:punct:][:digit:][:blank:]]+',' ',titles)
+titles <- gsub("[^0-9A-Za-z///' ]",' ', titles)
+```
+
+
+```{r}
+df %>%
+  rowwise() %>%
+  mutate("new_col" = sentiment_by(title, by = NULL)$ave_sentiment)
+```
+```{r}
+sent <- c()
+for (i in c(1:dim(df)[1])){
+  sent <- c(sent, sentiment_by(df$title[i], by = NULL)$ave_sentiment)
+  if(i%%100==0){
+    print(i)
+  }
+}
+```
+
+```{r}
+get_sent <- function(x){
+  return(sentiment_by(x, by = NULL)$ave_sentiment)
+} 
+sent <- c()
+sent <- lapply(df$title, get_sent)
+```
+
+```{r}
+df$sent <- sent
+```
+
+```{r}
+df[c(15:dim(df)[1]), ] %>%
+  group_by(date) %>%
+  summarise(avg = mean(sent)) %>% ggplot(aes(date, avg)) + geom_line(size = 0.8, color = 'darkgreen') + stat_smooth() +
+  ylab("average sentiment score")
+```
+
+```{r}
+ggplot(df, aes(x=factor(month), y=sent, fill = month)) + 
+    geom_boxplot()
+```
+
+```{r}
+ggplot(df, aes(x=factor(month), y=sent_c, fill = month)) + 
+    geom_boxplot() + ylab("average sentiment score")
+```
+
+
+```{r}
+df$month <- factor(month(df$date))
+m1 <- aov(sent ~ month, data = df)
+summary(m1)
+```
+
+```{r}
+df$month <- factor(month(df$date))
+m2 <- aov(sent_c ~ month, data = df)
+summary(m2)
+```
+
+```{r}
+library(agricolae)
+LSD.test(m2, "month", console = TRUE)
+```
+
+
+```{r}
+TukeyHSD(m1)
+```
+
+
+```{r}
+plot(TukeyHSD(m2))
+```
+
+```{r}
+sent_c <- c()
+for (i in c(1:dim(df)[1])){
+  sent_c <- c(sent_c, sentiment_by(get_sentences(df$content[i]), by = NULL)$ave_sentiment)
+  if(i%%100==0){
+    print(i)
+  }
+}
+```
+
+
+```{r}
+df$sent_c <- sent_c
+df[c(15:dim(df)[1]), ] %>%
+  group_by(date) %>%
+  summarise(avg = mean(sent_c)) %>% ggplot(aes(date, avg)) + ylab("average sentiment score") + geom_line(size = 0.8, color = 'darkgreen') + stat_smooth()
+```
+
+```{r}
+sentiment_by("increase", by = NULL)
+```
+
+percentage of positive news
+```{r}
+df[c(15:dim(df)[1]), ] %>%
+  group_by(date) %>%
+  summarise(pos = sum(sent_c>0)/n())  %>% ggplot(aes(date, pos)) + geom_line(size = 0.8, color = 'darkgreen')
+```
+
+```{r}
+content_in_one <-paste(df$content, collapse = ". ")
+```
+
+```{r}
+df_sent <- NULL
+get_sentences(df$content) %>% extract_sentiment_terms() -> df_sent
+```
+
+
+```{r}
+pos_vec <- unlist(df_sent$positive)
+```
+
+distirbution of top positive and negative words
+```{r}
+df_pos <- tibble("positive" = pos_vec)
+df_pos %>% 
+  group_by(positive)%>%
+  summarise(count = n()) %>%
+  top_n(30) %>%
+  mutate(positive = reorder(positive, count)) %>%
+  ggplot(aes(positive, count)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+```{r}
+neg_vec <- unlist(df_sent$negative)
+df_neg <- tibble("negative" = neg_vec)
+df_neg %>% 
+  group_by(negative)%>%
+  summarise(count = n()) %>%
+  top_n(30) %>%
+  mutate(negative = reorder(negative, count)) %>%
+  ggplot(aes(negative, count)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+
+### Below I am trying to figure out the rise of positive sentiment is mainly due to increase of positive words or decrease of negative words. (in a single news)
+
+Silly method to get new index
+```{r}
+dim(df[df$month==1, ])
+dim(df[df$month==2, ])
+dim(df[df$month==3, ])
+dim(df[df$month==4, ])
+```
+
+
+```{r}
+max(which(df_sent$element_id==878))
+max(which(df_sent$element_id==878+3718))
+max(which(df_sent$element_id==878+3718+19013))
+max(which(df_sent$element_id==878+3718+19013+9217))
+```
+
+
+```{r}
+df_sent$month <- c(rep(1, 26028), rep(2, 131868 - 26028), rep(3, 633401 - 131868), rep(4, 887692 - 633401))
+```
+
+dont know why this gets wrong
+```{r}
+df_sent %>%
+  mutate(pos_percent = length(unlist(positive))/nchar(sentence), 
+         neg_percent = length(unlist(negative))/nchar(sentence)) %>%
+  group_by(month) 
+```
+
+dont run; takes 30 minutes
+```{r}
+pos_percent <- c()
+neg_percent <- c()
+for (i in c(1:887692)){
+  pos_percent <- c(pos_percent, length(unlist(df_sent$positive[i])) / nchar(df_sent[i]$sentence))
+  neg_percent <- c(neg_percent, length(unlist(df_sent$negative[i])) / nchar(df_sent[i]$sentence))
+}
+df_sent$pos_percent <- pos_percent
+df_sent$neg_percent <- neg_percent
+```
+
+
+```{r}
+df_sent
+```
+
+#### So we can tell from the graph the reason that cause a more positive sentiment in march is not solely because of more positive words or less negative words; it is the result of both of them.
+```{r}
+df_sent %>%
+  group_by(month) %>%
+  summarise(pos_avg = mean(pos_percent, na.rm = TRUE), neg_avg = mean(neg_percent, na.rm = TRUE)) %>%
+  ggplot(aes(x = month)) + 
+  geom_line(aes(y = pos_avg), color="darkred") + 
+  geom_line(aes(y = neg_avg), color="steelblue", linetype="twodash") + ylab("frequency")
+```
+
+
+### Another thing to figure out: the overall rise of postive sentiment is due to 1.on AVERAGE, all news are becoming more postive or 2. the number of positive news increase (in other words, a specific group of news is the main cause of increase)
+### By observing the density plot below, we can see 2 is more likely.
+### Also we can say the increase is mainly due to the increase of positive news instead of decrease of negative news.
+```{r}
+ggplot(df,aes(x=sent_c, fill=month)) + geom_density(alpha=0.25) + xlab("sentiment")
+```
+
+take a deeper look into those march positive news using similar methods before
+```{r}
+df_pos_3 <- df[df$sent_c > 0.15, ]
+df_pos_3 <- df_pos_3[df_pos_3$month == 3, ]
+```
+
+```{r}
+which(df$sent_c > 0.15&df$month == 3)
+```
+
+
+```{r}
+df_pos_3_4 <- df[df$month %in% c(1,2), ]
+bigram_3_4 <- df_pos_3_4 %>% unnest_tokens(word, titles, token="ngrams", n=2) %>%
+  separate(word, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% updated_stop_words_2$word) %>% filter(!word2 %in% updated_stop_words_2$word)
+```
+
+
+```{r}
+unigram_3 <- df_pos_3 %>% unnest_tokens(word, titles) %>% anti_join(updated_stop_words) 
+
+bigram_3 <- df_pos_3 %>% unnest_tokens(word, titles, token="ngrams", n=2) %>%
+  separate(word, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% updated_stop_words$word) %>% filter(!word2 %in% updated_stop_words$word)
+
+trigram_3 <- df_pos_3 %>%
+  unnest_tokens(word, titles, token = "ngrams", n = 3) %>%
+  separate(word, c("word1", "word2", "word3"), sep = " ") %>%
+  filter(!word1 %in% updated_stop_words$word,
+         !word2 %in% updated_stop_words$word,
+         !word3 %in% updated_stop_words$word)
+```
+
+
+```{r}
+unigram_3 %>% count(word, sort=TRUE) %>% 
+  with(wordcloud(word, n, max.words =40))
+```
+
+does not include "coronavirus" "covid"
+```{r}
+bigram_3  %>%  
+  count(word1,word2) %>% 
+  top_n(40) %>%
+  graph_from_data_frame() %>% 
+  ggraph(layout = "fr") +
+  geom_edge_link() +
+  geom_edge_link(aes(edge_alpha = n, edge_width = n), edge_colour = "cyan4") +
+  geom_node_point(size = 4) +
+  geom_node_text(aes(label = name), repel = TRUE, 
+                 point.padding = 0.1) + theme_void()  + xlab(NULL) + ylab(NULL)
+```
+
+include "coronavirus" "covid"
+```{r}
+bigram_3_2 <- df_pos_3 %>% unnest_tokens(word, titles, token="ngrams", n=2) %>%
+  separate(word, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% updated_stop_words_2$word) %>% filter(!word2 %in% updated_stop_words_2$word)
+
+bigram_3_2  %>%  
+  count(word1,word2) %>% 
+  top_n(40) %>%
+  graph_from_data_frame() %>% 
+  ggraph(layout = "fr") +
+  geom_edge_link() +
+  geom_edge_link(aes(edge_alpha = n, edge_width = n), edge_colour = "cyan4") +
+  geom_node_point(size = 4) +
+  geom_node_text(aes(label = name), repel = TRUE, 
+                 point.padding = 0.1) + theme_void()  + xlab(NULL) + ylab(NULL)
+```
+
+
+
+```{r}
+new_index <- as.numeric(df$month)
+new_index[which(df$month==3 & df$sent_c>0.15)] <- "selected group of news"
+df$pos_3_index <- new_index
+```
+
+
+```{r, fig.width=12,fig.height=10}
+updated_stop_words_3 <- stop_words
+covid_words_3 <- tibble('word' = c('uk', 'cnn', 'sport', 'tv', 'world', 'guardian', 'express', 'bbc', 'reuters',  'news', 'football', 'cnnpolitics', 'showbiz', 'royal', 'amid', 'radio', 'update', 'jim', 'cramer', 'aaas', 'santa', 'barbara', 'fintech', 'times','wall', 'johnson', 'feb'), 'lexicon' = rep("covid", 27))
+updated_stop_words_3 <- rbind(updated_stop_words_3, covid_words_3)
+updated_stop_words_3 <- updated_stop_words_3[-which(updated_stop_words_3$word=='us'), ]
+
+bigram_3_3 <- df %>% unnest_tokens(word, titles, token="ngrams", n=2) %>%
+  separate(word, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% updated_stop_words_3$word) %>% filter(!word2 %in% updated_stop_words_3$word)
+
+bigram_3_3 %>% unite(word, word1, word2, sep=" ") %>%
+  count(pos_3_index, word) %>%
+  bind_tf_idf(word, pos_3_index, n) %>%
+  arrange(desc(tf_idf)) %>% 
+  slice(2:n()) %>% 
+  group_by(pos_3_index) %>%
+  arrange(desc(tf_idf)) %>%
+  slice(1:15) %>% 
+  ungroup() %>%
+  mutate(word = factor(paste(word, tf_idf, sep = "__"), 
+                       levels = rev(paste(word, tf_idf, sep = "__")))) %>%
+  ggplot(aes(word, tf_idf, fill = pos_3_index)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~pos_3_index, ncol = 2, scales = "free") +
+  scale_x_discrete(labels = function(x) gsub("__.+$", "", x)) +
+  coord_flip()
+
+```
+(group 0 is the positive news in March)
+
+Conclusion: the reason for the counter-intuitive rise of positive sentiment together with the outbreak in March is: the media is mentioning more about how they are going to deal with it, what kind of action they are going to take to face down the situation. (a lot of "announce" "change" "expand")
+And before the real outbreak, media tends to exaggerate using words like "fear", "emergency".
+
+
+
+```{r}
+head(df_sent[df_sent$element_id %in% which(df$sent_c > 0.15&df$month == 3), ])
+```
+
+```{r, fig.height=30}
+pos_vec_check <- unlist(df_sent[df_sent$element_id %in% which(df$sent_c > 0.15&df$month == 3), ]$positive)
+df_check <- tibble("positive" = pos_vec_check)
+df_check %>% 
+  group_by(positive)%>%
+  summarise(count = n()) %>%
+  top_n(70) %>%
+  mutate(positive = reorder(positive, count)) %>%
+  ggplot(aes(positive, count)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip()
+```
+
+```{r}
+pos_vec_1 <- unlist(df_sent[df_sent$element_id %in% which(df$month == 1), ]$positive)
+pos_vec_2 <- unlist(df_sent[df_sent$element_id %in% which(df$month == 2), ]$positive)
+pos_vec_3 <- unlist(df_sent[df_sent$element_id %in% which(df$month == 3), ]$positive)
+pos_vec_4 <- unlist(df_sent[df_sent$element_id %in% which(df$month == 4), ]$positive)
+keywords = c("forward", "support", "protect", "available", "care", "continue", "provide", "solutions", "free",
+             "action", "resources", "ensure", "offer", "benefits")
+vec_1 <- c()
+vec_2 <- c()
+vec_3 <- c()
+vec_4 <- c()
+for (i in c(1:14)){
+  w <- keywords[i]
+  vec_1 <- c(vec_1, length(grep(w, pos_vec_1))/sum(df$month==1))
+  vec_2 <- c(vec_2, length(grep(w, pos_vec_2))/sum(df$month==2))
+  vec_3 <- c(vec_3, length(grep(w, pos_vec_3))/sum(df$month==3))
+  vec_4 <- c(vec_4, length(grep(w, pos_vec_4))/sum(df$month==4))
+}
+df_keyword <- tibble("keywords" = keywords, "01" = vec_1, "02" = vec_2, "03" = vec_3, "04" = vec_4)
+df_keyword
+```
+
+```{r}
+library(reshape2)
+df_melted = melt(df_keyword, id.vars = 'keywords')
+ggplot(df_melted, aes(x = variable, y = value)) + geom_line(aes(color = keywords, group = keywords)) + xlab("month") +
+  ylab("frequency")
+```
+
+
+```{r}
+df_norm1 <- tibble("x" = c(rnorm(10000,0,1), rnorm(10000, 0.4, 1)), "y" = c(rep("a", 10000), rep("b", 10000)))
+ggplot(df_norm1, aes(x, fill = y)) + geom_density(alpha = 0.25)
+```
+
+
+```{r}
+vec1 <- c(rnorm(10000,0,1))
+index <- which(vec1 < 0)
+index <- sample(index, 1600)
+vec2 <- vec1
+for (i in index){
+  vec2[i] <- vec2[i] + 0.6
+}
+df_norm1 <- tibble("x" = c(vec1, vec2), "y" = c(rep("a", 10000), rep("b", 10000)))
+
+ggplot(df_norm1, aes(x, fill = y)) + geom_density(alpha = 0.25)
+```
+
+```{r}
+vec1 <- c(rnorm(10000,0,1))
+index <- which(vec1 < 1.5 & vec1 > -1)
+index <- sample(index, 1000)
+vec2 <- vec1
+for (i in index){
+  vec2[i] <- vec2[i] + 1.8
+}
+df_norm1 <- tibble("x" = c(vec1, vec2), "y" = c(rep("a", 10000), rep("b", 10000)))
+
+ggplot(df_norm1, aes(x, fill = y)) + geom_density(alpha = 0.25)
+```
+
+reference:
+https://www.kaggle.com/zhu701/covid-19-cbc-news-exploration
+https://www.tidytextmining.com/
